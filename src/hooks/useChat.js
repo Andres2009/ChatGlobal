@@ -24,7 +24,7 @@ export function useChat() {
   );
 
   const handleSend = useCallback(
-    (content, replyToMessageId) => sendMessage(content, replyToMessageId),
+    (content, replyToMessageId, imageUrl) => sendMessage(content, replyToMessageId, imageUrl),
     [sendMessage]
   );
 

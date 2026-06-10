@@ -89,11 +89,12 @@ export function registerSocketHandlers(io) {
       }
 
       const result = memoryStore.addMessage({
-        roomId: user.roomId,
-        userId: user.id,
-        username: user.username,
-        content: payload?.content ?? '',
+        roomId:           user.roomId,
+        userId:           user.id,
+        username:         user.username,
+        content:          payload?.content ?? '',
         replyToMessageId: payload?.replyToMessageId ?? null,
+        imageUrl:         payload?.imageUrl ?? null,
       });
 
       if (!result.success) {
@@ -146,6 +147,53 @@ export function registerSocketHandlers(io) {
       if (typeof callback === 'function') {
         callback({ success: true, message: messageJson });
       }
+    });
+
+    socket.on('switch-room', (payload, callback) => {
+      const result = memoryStore.switchUserRoom(socket.id, payload?.roomId);
+      if (!result.success) {
+        if (typeof callback === 'function') callback({ success: false, error: result.error });
+        return;
+      }
+
+      const { user, oldRoomId, newRoom } = result;
+      const oldChannel = getRoomChannel(oldRoomId);
+      const newChannel = getRoomChannel(newRoom.id);
+
+      // Notify old room
+      const leaveMsg = memoryStore.addSystemMessage(oldRoomId, `${user.username} cambió de sala`);
+      socket.leave(oldChannel);
+      io.to(oldChannel).emit('user-left', { user: user.toJSON(), systemMessage: leaveMsg.toJSON(), roomId: oldRoomId });
+      io.to(oldChannel).emit('users-updated', { users: memoryStore.getUsersList(oldRoomId), roomId: oldRoomId });
+
+      // Join new room
+      socket.join(newChannel);
+      const joinMsg  = memoryStore.addSystemMessage(newRoom.id, `${user.username} ingresó a la sala`);
+      const history  = memoryStore.getHistory(newRoom.id);
+      const users    = memoryStore.getUsersList(newRoom.id);
+
+      socket.emit('history-loaded', { messages: history, users, currentUser: user.toJSON(), room: newRoom });
+      socket.to(newChannel).emit('user-joined', { user: user.toJSON(), systemMessage: joinMsg.toJSON(), roomId: newRoom.id });
+      io.to(newChannel).emit('users-updated', { users, roomId: newRoom.id });
+      io.emit('rooms-list', { rooms: memoryStore.getRoomsList() });
+
+      if (typeof callback === 'function') callback({ success: true, room: newRoom });
+    });
+
+    socket.on('typing-start', () => {
+      const user = memoryStore.getUserBySocketId(socket.id);
+      if (!user) return;
+      socket.to(getRoomChannel(user.roomId)).emit('user-typing', {
+        userId: user.id, username: user.username, isTyping: true,
+      });
+    });
+
+    socket.on('typing-stop', () => {
+      const user = memoryStore.getUserBySocketId(socket.id);
+      if (!user) return;
+      socket.to(getRoomChannel(user.roomId)).emit('user-typing', {
+        userId: user.id, username: user.username, isTyping: false,
+      });
     });
 
     socket.on('mark-seen', (payload) => {

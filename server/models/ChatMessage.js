@@ -13,6 +13,7 @@ export class ChatMessage {
     mentions = [],
     replyTo = null,
     seenBy = [],
+    imageUrl = null,
   }) {
     this.id = id ?? randomUUID();
     this.userId = userId ?? null;
@@ -24,7 +25,8 @@ export class ChatMessage {
     this.type = type;
     this.mentions = mentions;
     this.replyTo = replyTo;
-    this.seenBy = seenBy; // [{ userId, username }]
+    this.seenBy   = seenBy;   // [{ userId, username }]
+    this.imageUrl = imageUrl; // string | null
   }
 
   toJSON() {
@@ -38,8 +40,9 @@ export class ChatMessage {
       isEdited: this.isEdited,
       type: this.type,
       mentions: this.mentions,
-      replyTo: this.replyTo,
-      seenBy: this.seenBy,
+      replyTo:  this.replyTo,
+      seenBy:   this.seenBy,
+      imageUrl: this.imageUrl,
     };
   }
 }

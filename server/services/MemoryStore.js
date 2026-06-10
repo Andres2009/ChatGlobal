@@ -175,26 +175,42 @@ export class MemoryStore {
     };
   }
 
-  addMessage({ roomId, userId, username, content, type = 'user', replyToMessageId = null }) {
-    const validation = MemoryStore.validateMessage(content);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
-    }
-
+  addMessage({ roomId, userId, username, content, type = 'user', replyToMessageId = null, imageUrl = null }) {
     const room = this.getRoomState(roomId);
-    if (!room) {
-      return { success: false, error: 'Sala no encontrada.' };
+    if (!room) return { success: false, error: 'Sala no encontrada.' };
+
+    // Content is optional when an image is attached
+    let finalContent = '';
+    if (content) {
+      const validation = MemoryStore.validateMessage(content);
+      if (!validation.valid) return { success: false, error: validation.error };
+      finalContent = validation.value;
+    } else if (!imageUrl) {
+      return { success: false, error: 'El mensaje no puede estar vacío.' };
     }
 
-    const mentions = this.extractMentions(validation.value, roomId);
-    const replyTo = this.buildReplySnapshot(room, replyToMessageId);
-    const message = new ChatMessage({
+    // Allow known GIF CDN domains; sanitize everything else to /uploads/
+    const ALLOWED_HOSTS = new Set(['c.tenor.com', 'media.tenor.com', 'media1.tenor.com', 'i.giphy.com', 'media.giphy.com']);
+    let safeImageUrl = null;
+    if (imageUrl) {
+      try {
+        const { hostname } = new URL(imageUrl);
+        safeImageUrl = ALLOWED_HOSTS.has(hostname) ? imageUrl : `/uploads/${imageUrl.split('/').pop()}`;
+      } catch {
+        safeImageUrl = `/uploads/${imageUrl.split('/').pop()}`;
+      }
+    }
+
+    const mentions = this.extractMentions(finalContent, roomId);
+    const replyTo  = this.buildReplySnapshot(room, replyToMessageId);
+    const message  = new ChatMessage({
       userId,
       username,
-      content: validation.value,
+      content: finalContent,
       type,
       mentions,
       replyTo,
+      imageUrl: safeImageUrl,
     });
 
     room.messages.push(message);
@@ -245,6 +261,33 @@ export class MemoryStore {
     message.mentions = this.extractMentions(validation.value, roomId);
 
     return { success: true, message };
+  }
+
+  switchUserRoom(socketId, newRoomId) {
+    const session = this.socketToSession.get(socketId);
+    if (!session) return { success: false, error: 'Sesión no encontrada.' };
+
+    const newRoomConfig = getRoomById(newRoomId);
+    if (!newRoomConfig) return { success: false, error: 'Sala no encontrada.' };
+
+    const oldRoomState = this.getRoomState(session.roomId);
+    const user = oldRoomState?.users.get(session.userId);
+    if (!user) return { success: false, error: 'Usuario no encontrado.' };
+
+    if (session.roomId === newRoomId) return { success: false, error: 'Ya estás en esa sala.' };
+
+    if (this.isUsernameTaken(newRoomId, user.username)) {
+      return { success: false, error: 'Ese nombre ya está en uso en la sala destino. Cambia tu alias.' };
+    }
+
+    const oldRoomId = session.roomId;
+    oldRoomState.users.delete(user.id);
+
+    user.roomId = newRoomId;
+    this.getRoomState(newRoomId).users.set(user.id, user);
+    this.socketToSession.set(socketId, { userId: user.id, roomId: newRoomId });
+
+    return { success: true, user, oldRoomId, newRoom: newRoomConfig };
   }
 
   markMessagesSeen(roomId, userId, username, messageIds) {

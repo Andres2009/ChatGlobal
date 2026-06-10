@@ -14,13 +14,14 @@ function sanitizeClientText(text) {
 
 export function ChatProvider({ children }) {
   const { socket, isConnected } = useSocket();
-  const [messages, setMessages] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [rooms, setRooms] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentRoom, setCurrentRoom] = useState(null);
-  const [isJoined, setIsJoined] = useState(false);
-  const [toasts, setToasts] = useState([]);
+  const [messages,     setMessages]     = useState([]);
+  const [users,        setUsers]        = useState([]);
+  const [rooms,        setRooms]        = useState([]);
+  const [currentUser,  setCurrentUser]  = useState(null);
+  const [currentRoom,  setCurrentRoom]  = useState(null);
+  const [isJoined,     setIsJoined]     = useState(false);
+  const [toasts,       setToasts]       = useState([]);
+  const [typingUsers,  setTypingUsers]  = useState([]); // [{ userId, username }]
   const toastIdRef = useRef(0);
   const currentUserRef = useRef(null);
   const pendingSeenIds = useRef(new Set());
@@ -83,14 +84,14 @@ export function ChatProvider({ children }) {
   );
 
   const sendMessage = useCallback(
-    (content, replyToMessageId = null) =>
+    (content, replyToMessageId = null, imageUrl = null) =>
       new Promise((resolve) => {
         const sanitized = sanitizeClientText(content);
-        if (!sanitized) {
+        if (!sanitized && !imageUrl) {
           resolve({ success: false, error: 'El mensaje no puede estar vacío.' });
           return;
         }
-        if (sanitized.length > MAX_MESSAGE_LENGTH) {
+        if (sanitized && sanitized.length > MAX_MESSAGE_LENGTH) {
           resolve({
             success: false,
             error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.`,
@@ -100,11 +101,24 @@ export function ChatProvider({ children }) {
 
         socket.emit(
           'send-message',
-          { content: sanitized, replyToMessageId },
+          { content: sanitized, replyToMessageId, imageUrl },
           (response) => {
             resolve(response ?? { success: false, error: 'No se pudo enviar el mensaje.' });
           }
         );
+      }),
+    [socket]
+  );
+
+  const startTyping = useCallback(() => socket.emit('typing-start'), [socket]);
+  const stopTyping  = useCallback(() => socket.emit('typing-stop'),  [socket]);
+
+  const switchRoom = useCallback(
+    (roomId) =>
+      new Promise((resolve) => {
+        socket.emit('switch-room', { roomId }, (response) => {
+          resolve(response ?? { success: false, error: 'No se pudo cambiar de sala.' });
+        });
       }),
     [socket]
   );
@@ -174,11 +188,14 @@ export function ChatProvider({ children }) {
       setCurrentUser(user);
       setCurrentRoom(room);
       setIsJoined(true);
+      setTypingUsers([]);
       clearNotifications();
     };
 
     const onReceiveMessage = ({ message }) => {
       setMessages((prev) => [...prev, message]);
+      // Clear typing indicator for the sender when their message arrives
+      setTypingUsers((prev) => prev.filter((u) => u.userId !== message.userId));
       handleIncomingMessage(message);
     };
 
@@ -199,7 +216,19 @@ export function ChatProvider({ children }) {
     const onUserLeft = ({ user, systemMessage, roomId }) => {
       if (currentRoom && roomId !== currentRoom.id) return;
       setMessages((prev) => [...prev, systemMessage]);
+      setTypingUsers((prev) => prev.filter((u) => u.userId !== user.id));
       showToast(`${user.username} abandonó la sala`, 'leave');
+    };
+
+    const onUserTyping = ({ userId, username, isTyping }) => {
+      setTypingUsers((prev) => {
+        if (isTyping) {
+          return prev.some((u) => u.userId === userId)
+            ? prev
+            : [...prev, { userId, username }];
+        }
+        return prev.filter((u) => u.userId !== userId);
+      });
     };
 
     const onMessagesSeen = ({ messages: updatedMessages }) => {
@@ -229,6 +258,7 @@ export function ChatProvider({ children }) {
     socket.on('user-left', onUserLeft);
     socket.on('mention-notification', onMentionNotification);
     socket.on('messages-seen', onMessagesSeen);
+    socket.on('user-typing', onUserTyping);
 
     socket.emit('get-rooms');
 
@@ -242,6 +272,7 @@ export function ChatProvider({ children }) {
       socket.off('user-left', onUserLeft);
       socket.off('mention-notification', onMentionNotification);
       socket.off('messages-seen', onMessagesSeen);
+      socket.off('user-typing', onUserTyping);
     };
   }, [socket, showToast, currentRoom, handleIncomingMessage, pushNotification, clearNotifications]);
 
@@ -280,10 +311,14 @@ export function ChatProvider({ children }) {
       showBanner,
       lastNotification,
       notificationPermission: permission,
+      typingUsers,
       joinChat,
+      switchRoom,
       sendMessage,
       editMessage,
       markMessagesSeen,
+      startTyping,
+      stopTyping,
       showToast,
       clearNotifications,
       setShowBanner,
@@ -302,10 +337,14 @@ export function ChatProvider({ children }) {
       showBanner,
       lastNotification,
       permission,
+      typingUsers,
       joinChat,
+      switchRoom,
       sendMessage,
       editMessage,
       markMessagesSeen,
+      startTyping,
+      stopTyping,
       showToast,
       clearNotifications,
       setShowBanner,
