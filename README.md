@@ -33,7 +33,15 @@ npm run build
 npm start
 ```
 
-Sirve el frontend compilado con un servidor estático o configura `CLIENT_ORIGIN` para el origen del cliente.
+Abre la misma URL del servidor (por defecto `http://localhost:3001`). El backend sirve el frontend compilado desde `dist/`.
+
+En Render u otro hosting:
+
+- **Build Command:** `npm install && npm run build`
+- **Start Command:** `npm start`
+- **Variable opcional:** `CLIENT_ORIGIN` = URL pública del servicio (ej. `https://tu-app.onrender.com`)
+
+> En desarrollo usa `http://localhost:5173`. Si abres solo `http://localhost:3001` sin haber hecho `build`, verás una página de ayuda, no el chat.
 
 ## Variables de entorno (opcional)
 
