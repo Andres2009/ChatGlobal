@@ -4,11 +4,11 @@ import { DEFAULT_ROOMS, getThemeClass } from '../config/rooms';
 const MAX_ALIAS_LENGTH = 30;
 
 export default function LoginModal({ onJoin, isConnected, rooms }) {
-  const [alias, setAlias] = useState('');
-  const availableRooms = rooms.length ? rooms : DEFAULT_ROOMS;
+  const availableRooms                  = rooms.length ? rooms : DEFAULT_ROOMS;
+  const [alias,          setAlias]      = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState(availableRooms[0]?.id ?? 'general');
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error,          setError]      = useState('');
+  const [isSubmitting,   setIsSubmitting] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -44,40 +44,20 @@ export default function LoginModal({ onJoin, isConnected, rooms }) {
   return (
     <div className="login-modal-backdrop">
       <div className="login-modal card shadow-lg border-0 animate-fade-in">
-        <div className="card-body p-4 p-md-5">
-          <div className="text-center mb-4">
-            <div className="login-icon mb-3">
-              <i className="bi bi-chat-dots-fill" />
-            </div>
-            <h1 className="h3 mb-2">Bienvenido al Chat</h1>
-            <p className="text-muted mb-0">Elige una sala, ingresa tu nombre y comienza a chatear.</p>
-          </div>
+        <form onSubmit={handleSubmit} noValidate className="login-modal-form">
 
-          <form onSubmit={handleSubmit} noValidate>
-            <div className="mb-4">
-              <label className="form-label fw-semibold">Selecciona una sala</label>
-              <div className="room-selector">
-                {availableRooms.map((room) => (
-                  <button
-                    key={room.id}
-                    type="button"
-                    className={`room-card ${getThemeClass(room.theme)} ${selectedRoomId === room.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedRoomId(room.id)}
-                  >
-                    <div className="room-card-icon">
-                      <i className={`bi ${room.icon}`} />
-                    </div>
-                    <div className="room-card-body">
-                      <strong>{room.name}</strong>
-                      <small>{room.topic}</small>
-                      <span className="room-card-users">{room.userCount ?? 0} en línea</span>
-                    </div>
-                  </button>
-                ))}
+          {/* TOP FIJO: header + nombre */}
+          <div className="login-modal-top">
+
+            <div className="text-center mb-4">
+              <div className="login-icon mb-3">
+                <i className="bi bi-chat-dots-fill" />
               </div>
+              <h1 className="h3 mb-1">Bienvenido al Chat</h1>
+              <p className="text-muted mb-0 small">Elige una sala, ingresa tu nombre y chatea.</p>
             </div>
 
-            <div className="mb-3">
+            <div>
               <label htmlFor="alias" className="form-label fw-semibold">
                 Ingrese su nombre
               </label>
@@ -93,11 +73,41 @@ export default function LoginModal({ onJoin, isConnected, rooms }) {
                 }}
                 maxLength={MAX_ALIAS_LENGTH}
                 autoFocus
+                autoComplete="off"
                 disabled={isSubmitting}
               />
               {error && <div className="invalid-feedback d-block">{error}</div>}
               <div className="form-text text-end">{alias.trim().length}/{MAX_ALIAS_LENGTH}</div>
             </div>
+
+          </div>
+
+          {/* ÁREA SCROLLABLE: selector de sala */}
+          <div className="login-modal-rooms">
+            <label className="form-label fw-semibold">Selecciona una sala</label>
+            <div className="room-selector">
+              {availableRooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  className={`room-card ${getThemeClass(room.theme)} ${selectedRoomId === room.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedRoomId(room.id)}
+                >
+                  <div className="room-card-icon">
+                    <i className={`bi ${room.icon}`} />
+                  </div>
+                  <div className="room-card-body">
+                    <strong>{room.name}</strong>
+                    <small className="d-none d-sm-block">{room.topic}</small>
+                    <span className="room-card-users">{room.userCount ?? 0} en línea</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* BOTTOM FIJO: botón + estado */}
+          <div className="login-modal-bottom">
 
             <button
               type="submit"
@@ -114,14 +124,16 @@ export default function LoginModal({ onJoin, isConnected, rooms }) {
               )}
             </button>
 
-            <div className="connection-status mt-3 text-center">
+            <div className="mt-3 text-center">
               <span className={`status-dot ${isConnected ? 'online' : 'offline'}`} />
               <small className="text-muted ms-1">
                 {isConnected ? 'Servidor en línea' : 'Conectando al servidor...'}
               </small>
             </div>
-          </form>
-        </div>
+
+          </div>
+
+        </form>
       </div>
     </div>
   );

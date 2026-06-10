@@ -165,7 +165,7 @@ export default function MessageInput({
         <textarea
           ref={textareaRef}
           className="form-control message-textarea"
-          placeholder="Escribe un mensaje... @ mencionar · Enter enviar · Shift+Enter nueva línea"
+          placeholder="Escribe un mensaje... @ para mencionar"
           rows={2}
           value={content}
           onChange={(event) => {
@@ -177,7 +177,8 @@ export default function MessageInput({
           onKeyUp={(event) => updateMentionState(event.target.value, event.target.selectionStart)}
           onKeyDown={handleKeyDown}
           maxLength={MAX_MESSAGE_LENGTH}
-          disabled={disabled || isSending}
+          disabled={disabled}
+          autoFocus
         />
         <button
           type="button"
