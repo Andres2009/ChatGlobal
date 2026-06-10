@@ -23,6 +23,8 @@ export function ChatProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
   const currentUserRef = useRef(null);
+  const pendingSeenIds = useRef(new Set());
+  const seenTimerRef = useRef(null);
 
   const {
     pendingCount,
@@ -107,6 +109,20 @@ export function ChatProvider({ children }) {
     [socket]
   );
 
+  const markMessagesSeen = useCallback(
+    (messageId) => {
+      if (!isJoined) return;
+      pendingSeenIds.current.add(messageId);
+      clearTimeout(seenTimerRef.current);
+      seenTimerRef.current = setTimeout(() => {
+        const ids = [...pendingSeenIds.current];
+        pendingSeenIds.current.clear();
+        if (ids.length > 0) socket.emit('mark-seen', { messageIds: ids });
+      }, 400);
+    },
+    [socket, isJoined]
+  );
+
   const editMessage = useCallback(
     (messageId, content) =>
       new Promise((resolve) => {
@@ -186,6 +202,15 @@ export function ChatProvider({ children }) {
       showToast(`${user.username} abandonó la sala`, 'leave');
     };
 
+    const onMessagesSeen = ({ messages: updatedMessages }) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          const updated = updatedMessages.find((u) => u.id === msg.id);
+          return updated ?? msg;
+        })
+      );
+    };
+
     const onMentionNotification = ({ message, mentionedBy }) => {
       pushNotification({
         title: `${mentionedBy} te mencionó`,
@@ -203,6 +228,7 @@ export function ChatProvider({ children }) {
     socket.on('user-joined', onUserJoined);
     socket.on('user-left', onUserLeft);
     socket.on('mention-notification', onMentionNotification);
+    socket.on('messages-seen', onMessagesSeen);
 
     socket.emit('get-rooms');
 
@@ -215,8 +241,30 @@ export function ChatProvider({ children }) {
       socket.off('user-joined', onUserJoined);
       socket.off('user-left', onUserLeft);
       socket.off('mention-notification', onMentionNotification);
+      socket.off('messages-seen', onMessagesSeen);
     };
   }, [socket, showToast, currentRoom, handleIncomingMessage, pushNotification, clearNotifications]);
+
+  // Track window focus/visibility and broadcast to the room
+  useEffect(() => {
+    if (!isJoined) return;
+
+    const emit = (active) => socket.emit('user-activity', { isActive: active });
+    const onVisibility = () => emit(document.visibilityState === 'visible');
+    const onFocus = () => emit(true);
+    const onBlur  = () => emit(false);
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur',  onBlur);
+    emit(document.visibilityState === 'visible' && document.hasFocus());
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur',  onBlur);
+    };
+  }, [isJoined, socket]);
 
   const value = useMemo(
     () => ({
@@ -235,6 +283,7 @@ export function ChatProvider({ children }) {
       joinChat,
       sendMessage,
       editMessage,
+      markMessagesSeen,
       showToast,
       clearNotifications,
       setShowBanner,
@@ -256,6 +305,7 @@ export function ChatProvider({ children }) {
       joinChat,
       sendMessage,
       editMessage,
+      markMessagesSeen,
       showToast,
       clearNotifications,
       setShowBanner,

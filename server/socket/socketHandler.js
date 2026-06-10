@@ -148,6 +148,39 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    socket.on('mark-seen', (payload) => {
+      const user = memoryStore.getUserBySocketId(socket.id);
+      if (!user) return;
+
+      const messageIds = payload?.messageIds ?? [];
+      if (!messageIds.length) return;
+
+      const { updatedMessages } = memoryStore.markMessagesSeen(
+        user.roomId,
+        user.id,
+        user.username,
+        messageIds
+      );
+
+      if (updatedMessages.length > 0) {
+        const channel = getRoomChannel(user.roomId);
+        io.to(channel).emit('messages-seen', {
+          roomId: user.roomId,
+          messages: updatedMessages.map((m) => m.toJSON()),
+        });
+      }
+    });
+
+    socket.on('user-activity', (payload) => {
+      const isActive = payload?.isActive ?? true;
+      const result = memoryStore.setUserActivity(socket.id, isActive);
+      if (!result) return;
+
+      const channel = getRoomChannel(result.roomId);
+      const users = memoryStore.getUsersList(result.roomId);
+      io.to(channel).emit('users-updated', { users, roomId: result.roomId });
+    });
+
     socket.on('disconnect', () => {
       const user = memoryStore.removeUserBySocketId(socket.id);
       if (!user) return;

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatDateTime, formatTime } from '../utils/formatDate';
 import { renderMessageWithMentions } from '../utils/mentions';
 import QuoteBlock from './QuoteBlock';
 
 const MAX_MESSAGE_LENGTH = 2000;
+const MAX_SEEN_AVATARS = 4;
 
 function MessageContent({ content, currentUsername }) {
   const parts = renderMessageWithMentions(content, currentUsername);
@@ -23,17 +24,60 @@ function MessageContent({ content, currentUsername }) {
   );
 }
 
+function SeenBy({ seenBy }) {
+  if (!seenBy?.length) return null;
+
+  const visible = seenBy.slice(0, MAX_SEEN_AVATARS);
+  const extra   = seenBy.length - visible.length;
+  const title   = `Visto por: ${seenBy.map((s) => s.username).join(', ')}`;
+
+  return (
+    <div className="message-seen-by" title={title}>
+      {visible.map((viewer) => (
+        <span key={viewer.userId} className="seen-mini-avatar">
+          {viewer.username.charAt(0).toUpperCase()}
+        </span>
+      ))}
+      {extra > 0 && <span className="seen-extra-count">+{extra}</span>}
+    </div>
+  );
+}
+
 export default function MessageItem({
   message,
   isOwner,
   onEdit,
   onQuote,
   currentUsername,
+  onMarkSeen,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const articleRef = useRef(null);
+
+  // Mark message as seen when it enters the viewport (only for others' messages)
+  useEffect(() => {
+    if (isOwner || !onMarkSeen) return;
+
+    const el = articleRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          onMarkSeen(message.id);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.6 }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSave = async () => {
     setError('');
@@ -64,8 +108,13 @@ export default function MessageItem({
     setIsEditing(false);
   };
 
+  const seenCount = message.seenBy?.length ?? 0;
+
   return (
-    <article className={`message-item animate-slide-in ${isOwner ? 'is-own' : 'is-other'}`}>
+    <article
+      ref={articleRef}
+      className={`message-item animate-slide-in ${isOwner ? 'is-own' : 'is-other'}`}
+    >
       {!isOwner && (
         <div className="message-avatar">{message.username.charAt(0).toUpperCase()}</div>
       )}
@@ -117,8 +166,16 @@ export default function MessageItem({
             {message.isEdited && (
               <span className="message-edited-label"> · editado {formatTime(message.updatedAt)}</span>
             )}
+            {isOwner && (
+              <i
+                className={`bi message-check ${seenCount > 0 ? 'bi-check2-all is-seen' : 'bi-check2'}`}
+                title={seenCount > 0 ? `Visto por ${seenCount} persona${seenCount > 1 ? 's' : ''}` : 'Enviado'}
+              />
+            )}
           </footer>
         </div>
+
+        {isOwner && <SeenBy seenBy={message.seenBy} />}
 
         {!isEditing && (
           <div className="message-actions">

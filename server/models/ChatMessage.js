@@ -12,6 +12,7 @@ export class ChatMessage {
     type = 'user',
     mentions = [],
     replyTo = null,
+    seenBy = [],
   }) {
     this.id = id ?? randomUUID();
     this.userId = userId ?? null;
@@ -23,6 +24,7 @@ export class ChatMessage {
     this.type = type;
     this.mentions = mentions;
     this.replyTo = replyTo;
+    this.seenBy = seenBy; // [{ userId, username }]
   }
 
   toJSON() {
@@ -37,6 +39,7 @@ export class ChatMessage {
       type: this.type,
       mentions: this.mentions,
       replyTo: this.replyTo,
+      seenBy: this.seenBy,
     };
   }
 }

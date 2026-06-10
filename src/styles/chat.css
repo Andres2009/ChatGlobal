@@ -157,6 +157,38 @@ body {
 }
 
 /* ══════════════════════════════════════════
+   UPDATE BANNER
+══════════════════════════════════════════ */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  background: linear-gradient(90deg, #059669, #0d9488);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(5,150,105,.35);
+  animation: slideIn 0.3s ease-out;
+}
+
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.update-reload-btn {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════
    BUTTONS
 ══════════════════════════════════════════ */
 .btn-primary {
@@ -369,6 +401,44 @@ body {
 
 .message-edited-label { font-size: 0.72rem; }
 
+/* Read receipt checkmarks (inside bubble footer, own messages only) */
+.message-check {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,.5);
+  transition: color 0.2s;
+}
+.message-check.is-seen {
+  color: rgba(255,255,255,.95);
+}
+
+/* Seen-by avatars (below the bubble, own messages) */
+.message-seen-by {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 3px;
+  justify-content: flex-end;
+}
+
+.seen-mini-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--chat-primary) 18%, white);
+  color: var(--chat-primary);
+  font-size: 0.5rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--chat-primary) 28%, transparent);
+}
+
+.seen-extra-count {
+  font-size: 0.6rem;
+  color: var(--chat-muted);
+  font-weight: 600;
+}
+
 .message-actions {
   display: flex;
   gap: 0.15rem;
@@ -569,7 +639,31 @@ body {
   height: 8px;
   border-radius: 50%;
   background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34,197,94,.2);
   flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.user-badge-dot.is-away {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245,158,11,.2);
+}
+
+.user-away-icon {
+  font-size: 0.6rem;
+  color: #f59e0b;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.users-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--chat-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 0.7rem 0.25rem;
+  display: flex;
+  align-items: center;
 }
 
 .user-badge-name {

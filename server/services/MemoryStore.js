@@ -247,6 +247,32 @@ export class MemoryStore {
     return { success: true, message };
   }
 
+  markMessagesSeen(roomId, userId, username, messageIds) {
+    const room = this.getRoomState(roomId);
+    if (!room) return { updatedMessages: [] };
+
+    const updatedMessages = [];
+    for (const msgId of messageIds) {
+      const msg = room.messages.find((m) => m.id === msgId && m.type === 'user');
+      if (!msg) continue;
+      if (msg.userId === userId) continue;
+      if (msg.seenBy.some((s) => s.userId === userId)) continue;
+      msg.seenBy.push({ userId, username });
+      updatedMessages.push(msg);
+    }
+    return { updatedMessages };
+  }
+
+  setUserActivity(socketId, isActive) {
+    const session = this.socketToSession.get(socketId);
+    if (!session) return null;
+    const room = this.getRoomState(session.roomId);
+    const user = room?.users.get(session.userId);
+    if (!user) return null;
+    user.isActive = isActive;
+    return { roomId: session.roomId };
+  }
+
   getHistory(roomId) {
     const room = this.getRoomState(roomId);
     if (!room) return [];

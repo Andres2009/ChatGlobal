@@ -8,6 +8,7 @@ export default function MessageList({
   currentUsername,
   onEditMessage,
   onQuoteMessage,
+  onMarkSeen,
 }) {
   const bottomRef = useRef(null);
 
@@ -34,6 +35,7 @@ export default function MessageList({
               currentUsername={currentUsername}
               onEdit={onEditMessage}
               onQuote={onQuoteMessage}
+              onMarkSeen={onMarkSeen}
             />
           )
         )

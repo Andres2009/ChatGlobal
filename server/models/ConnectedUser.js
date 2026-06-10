@@ -1,10 +1,11 @@
 export class ConnectedUser {
-  constructor({ id, socketId, username, roomId, joinedAt }) {
+  constructor({ id, socketId, username, roomId, joinedAt, isActive = true }) {
     this.id = id;
     this.socketId = socketId;
     this.username = username;
     this.roomId = roomId;
     this.joinedAt = joinedAt ?? new Date().toISOString();
+    this.isActive = isActive;
   }
 
   toJSON() {
@@ -14,6 +15,7 @@ export class ConnectedUser {
       username: this.username,
       roomId: this.roomId,
       joinedAt: this.joinedAt,
+      isActive: this.isActive,
     };
   }
 }

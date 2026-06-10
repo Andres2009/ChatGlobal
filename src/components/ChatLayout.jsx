@@ -18,6 +18,7 @@ export default function ChatLayout() {
     lastNotification,
     sendMessage,
     editMessage,
+    markMessagesSeen,
     clearNotifications,
   } = useChatContext();
 
@@ -96,6 +97,7 @@ export default function ChatLayout() {
             currentUsername={currentUser?.username}
             onEditMessage={editMessage}
             onQuoteMessage={handleQuote}
+            onMarkSeen={markMessagesSeen}
           />
           <MessageInput
             onSend={sendMessage}
