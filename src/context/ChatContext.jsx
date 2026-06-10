@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useNotifications } from '../hooks/useNotifications';
 import { useSocket } from '../hooks/useSocket';
 
 const ChatContext = createContext(null);
@@ -15,10 +16,28 @@ export function ChatProvider({ children }) {
   const { socket, isConnected } = useSocket();
   const [messages, setMessages] = useState([]);
   const [users, setUsers] = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentRoom, setCurrentRoom] = useState(null);
   const [isJoined, setIsJoined] = useState(false);
   const [toasts, setToasts] = useState([]);
   const toastIdRef = useRef(0);
+  const currentUserRef = useRef(null);
+
+  const {
+    pendingCount,
+    showBanner,
+    lastNotification,
+    permission,
+    requestPermission,
+    pushNotification,
+    clearNotifications,
+    setShowBanner,
+  } = useNotifications(currentRoom);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   const showToast = useCallback((message, type = 'info') => {
     const id = ++toastIdRef.current;
@@ -29,7 +48,7 @@ export function ChatProvider({ children }) {
   }, []);
 
   const joinChat = useCallback(
-    (username) =>
+    (username, roomId) =>
       new Promise((resolve) => {
         const sanitized = sanitizeClientText(username);
         if (!sanitized) {
@@ -43,20 +62,26 @@ export function ChatProvider({ children }) {
           });
           return;
         }
+        if (!roomId) {
+          resolve({ success: false, error: 'Debes seleccionar una sala.' });
+          return;
+        }
 
-        socket.emit('join-chat', { username: sanitized }, (response) => {
+        socket.emit('join-chat', { username: sanitized, roomId }, (response) => {
           if (response?.success) {
             setCurrentUser(response.user);
+            setCurrentRoom(response.room);
             setIsJoined(true);
+            requestPermission();
           }
           resolve(response ?? { success: false, error: 'No se pudo unir al chat.' });
         });
       }),
-    [socket]
+    [socket, requestPermission]
   );
 
   const sendMessage = useCallback(
-    (content) =>
+    (content, replyToMessageId = null) =>
       new Promise((resolve) => {
         const sanitized = sanitizeClientText(content);
         if (!sanitized) {
@@ -71,9 +96,13 @@ export function ChatProvider({ children }) {
           return;
         }
 
-        socket.emit('send-message', { content: sanitized }, (response) => {
-          resolve(response ?? { success: false, error: 'No se pudo enviar el mensaje.' });
-        });
+        socket.emit(
+          'send-message',
+          { content: sanitized, replyToMessageId },
+          (response) => {
+            resolve(response ?? { success: false, error: 'No se pudo enviar el mensaje.' });
+          }
+        );
       }),
     [socket]
   );
@@ -101,16 +130,40 @@ export function ChatProvider({ children }) {
     [socket]
   );
 
+  const handleIncomingMessage = useCallback(
+    (message) => {
+      const me = currentUserRef.current;
+      if (!me || message.userId === me.id) return;
+
+      const mentionedMe = (message.mentions ?? []).some((mention) => mention.id === me.id);
+      if (mentionedMe) return;
+
+      pushNotification({
+        title: `Nuevo mensaje en ${currentRoom?.name ?? 'el chat'}`,
+        body: `${message.username}: ${message.content}`,
+        isMention: false,
+      });
+    },
+    [currentRoom, pushNotification]
+  );
+
   useEffect(() => {
-    const onHistoryLoaded = ({ messages: history, users: connectedUsers, currentUser: user }) => {
+    const onRoomsList = ({ rooms: availableRooms }) => {
+      setRooms(availableRooms ?? []);
+    };
+
+    const onHistoryLoaded = ({ messages: history, users: connectedUsers, currentUser: user, room }) => {
       setMessages(history);
       setUsers(connectedUsers);
       setCurrentUser(user);
+      setCurrentRoom(room);
       setIsJoined(true);
+      clearNotifications();
     };
 
     const onReceiveMessage = ({ message }) => {
       setMessages((prev) => [...prev, message]);
+      handleIncomingMessage(message);
     };
 
     const onMessageEdited = ({ message }) => {
@@ -121,57 +174,92 @@ export function ChatProvider({ children }) {
       setUsers(connectedUsers);
     };
 
-    const onUserJoined = ({ user, systemMessage }) => {
+    const onUserJoined = ({ user, systemMessage, roomId }) => {
+      if (currentRoom && roomId !== currentRoom.id) return;
       setMessages((prev) => [...prev, systemMessage]);
-      showToast(`${user.username} se unió al chat`, 'join');
+      showToast(`${user.username} se unió a la sala`, 'join');
     };
 
-    const onUserLeft = ({ user, systemMessage }) => {
+    const onUserLeft = ({ user, systemMessage, roomId }) => {
+      if (currentRoom && roomId !== currentRoom.id) return;
       setMessages((prev) => [...prev, systemMessage]);
-      showToast(`${user.username} abandonó el chat`, 'leave');
+      showToast(`${user.username} abandonó la sala`, 'leave');
     };
 
+    const onMentionNotification = ({ message, mentionedBy }) => {
+      pushNotification({
+        title: `${mentionedBy} te mencionó`,
+        body: message.content,
+        isMention: true,
+      });
+      showToast(`${mentionedBy} te mencionó en un mensaje`, 'mention');
+    };
+
+    socket.on('rooms-list', onRoomsList);
     socket.on('history-loaded', onHistoryLoaded);
     socket.on('receive-message', onReceiveMessage);
     socket.on('message-edited', onMessageEdited);
     socket.on('users-updated', onUsersUpdated);
     socket.on('user-joined', onUserJoined);
     socket.on('user-left', onUserLeft);
+    socket.on('mention-notification', onMentionNotification);
+
+    socket.emit('get-rooms');
 
     return () => {
+      socket.off('rooms-list', onRoomsList);
       socket.off('history-loaded', onHistoryLoaded);
       socket.off('receive-message', onReceiveMessage);
       socket.off('message-edited', onMessageEdited);
       socket.off('users-updated', onUsersUpdated);
       socket.off('user-joined', onUserJoined);
       socket.off('user-left', onUserLeft);
+      socket.off('mention-notification', onMentionNotification);
     };
-  }, [socket, showToast]);
+  }, [socket, showToast, currentRoom, handleIncomingMessage, pushNotification, clearNotifications]);
 
   const value = useMemo(
     () => ({
       messages,
       users,
+      rooms,
       currentUser,
+      currentRoom,
       isJoined,
       isConnected,
       toasts,
+      pendingCount,
+      showBanner,
+      lastNotification,
+      notificationPermission: permission,
       joinChat,
       sendMessage,
       editMessage,
       showToast,
+      clearNotifications,
+      setShowBanner,
+      requestPermission,
     }),
     [
       messages,
       users,
+      rooms,
       currentUser,
+      currentRoom,
       isJoined,
       isConnected,
       toasts,
+      pendingCount,
+      showBanner,
+      lastNotification,
+      permission,
       joinChat,
       sendMessage,
       editMessage,
       showToast,
+      clearNotifications,
+      setShowBanner,
+      requestPermission,
     ]
   );
 

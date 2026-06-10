@@ -5,22 +5,26 @@ export function useChat() {
   const {
     messages,
     users,
+    rooms,
     currentUser,
+    currentRoom,
     isJoined,
     isConnected,
     joinChat,
     sendMessage,
     editMessage,
     showToast,
+    pendingCount,
+    clearNotifications,
   } = useChatContext();
 
   const handleJoin = useCallback(
-    (username) => joinChat(username),
+    (username, roomId) => joinChat(username, roomId),
     [joinChat]
   );
 
   const handleSend = useCallback(
-    (content) => sendMessage(content),
+    (content, replyToMessageId) => sendMessage(content, replyToMessageId),
     [sendMessage]
   );
 
@@ -32,12 +36,16 @@ export function useChat() {
   return {
     messages,
     users,
+    rooms,
     currentUser,
+    currentRoom,
     isJoined,
     isConnected,
+    pendingCount,
     joinChat: handleJoin,
     sendMessage: handleSend,
     editMessage: handleEdit,
     showToast,
+    clearNotifications,
   };
 }

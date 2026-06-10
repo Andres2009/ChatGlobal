@@ -4,11 +4,11 @@ import ToastContainer from './components/ToastContainer';
 import { ChatProvider, useChatContext } from './context/ChatContext';
 
 function AppContent() {
-  const { isJoined, isConnected, joinChat } = useChatContext();
+  const { isJoined, isConnected, rooms, joinChat } = useChatContext();
 
   return (
     <>
-      {!isJoined && <LoginModal onJoin={joinChat} isConnected={isConnected} />}
+      {!isJoined && <LoginModal onJoin={joinChat} isConnected={isConnected} rooms={rooms} />}
       {isJoined && <ChatLayout />}
       <ToastContainer />
     </>

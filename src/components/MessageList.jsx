@@ -2,16 +2,21 @@ import { useEffect, useRef } from 'react';
 import MessageItem from './MessageItem';
 import SystemMessage from './SystemMessage';
 
-export default function MessageList({ messages, currentUserId, onEditMessage }) {
+export default function MessageList({
+  messages,
+  currentUserId,
+  currentUsername,
+  onEditMessage,
+  onQuoteMessage,
+}) {
   const bottomRef = useRef(null);
-  const containerRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   return (
-    <section className="message-list" ref={containerRef} aria-label="Mensajes del chat">
+    <section className="message-list" aria-label="Mensajes del chat">
       {messages.length === 0 ? (
         <div className="empty-chat text-center text-muted">
           <i className="bi bi-chat-square-text display-6 d-block mb-3" />
@@ -26,7 +31,9 @@ export default function MessageList({ messages, currentUserId, onEditMessage }) 
               key={message.id}
               message={message}
               isOwner={message.userId === currentUserId}
+              currentUsername={currentUsername}
               onEdit={onEditMessage}
+              onQuote={onQuoteMessage}
             />
           )
         )

@@ -1,15 +1,28 @@
 import { randomUUID } from 'crypto';
+import { ROOMS, getRoomById } from '../config/rooms.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { ConnectedUser } from '../models/ConnectedUser.js';
 
 const MAX_ALIAS_LENGTH = 30;
 const MAX_MESSAGE_LENGTH = 2000;
+const MENTION_REGEX = /@([\p{L}\p{N}_-]+)/gu;
+
+class RoomState {
+  constructor(config) {
+    this.config = config;
+    this.users = new Map();
+    this.messages = [];
+  }
+}
 
 export class MemoryStore {
   constructor() {
-    this.users = new Map();
-    this.messages = [];
-    this.socketToUserId = new Map();
+    this.rooms = new Map();
+    this.socketToSession = new Map();
+
+    for (const room of ROOMS) {
+      this.rooms.set(room.id, new RoomState(room));
+    }
   }
 
   static sanitizeText(text) {
@@ -39,8 +52,22 @@ export class MemoryStore {
     return { valid: true, value: sanitized };
   }
 
-  isUsernameTaken(username, excludeUserId = null) {
-    for (const user of this.users.values()) {
+  getRoomsList() {
+    return ROOMS.map((room) => ({
+      ...room,
+      userCount: this.rooms.get(room.id)?.users.size ?? 0,
+    }));
+  }
+
+  getRoomState(roomId) {
+    return this.rooms.get(roomId) ?? null;
+  }
+
+  isUsernameTaken(roomId, username, excludeUserId = null) {
+    const room = this.getRoomState(roomId);
+    if (!room) return false;
+
+    for (const user of room.users.values()) {
       if (user.username.toLowerCase() === username.toLowerCase() && user.id !== excludeUserId) {
         return true;
       }
@@ -48,86 +75,158 @@ export class MemoryStore {
     return false;
   }
 
-  addUser(socketId, username) {
+  extractMentions(content, roomId) {
+    const room = this.getRoomState(roomId);
+    if (!room) return [];
+
+    const mentions = [];
+    const seen = new Set();
+    const matches = content.matchAll(MENTION_REGEX);
+
+    for (const match of matches) {
+      const mentionName = match[1];
+      const user = Array.from(room.users.values()).find(
+        (item) => item.username.toLowerCase() === mentionName.toLowerCase()
+      );
+
+      if (user && !seen.has(user.id)) {
+        seen.add(user.id);
+        mentions.push({ id: user.id, username: user.username });
+      }
+    }
+
+    return mentions;
+  }
+
+  addUser(socketId, username, roomId) {
+    const roomConfig = getRoomById(roomId);
+    if (!roomConfig) {
+      return { success: false, error: 'La sala seleccionada no existe.' };
+    }
+
     const validation = MemoryStore.validateAlias(username);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
 
-    if (this.isUsernameTaken(validation.value)) {
-      return { success: false, error: 'Ese alias ya está en uso. Elige otro.' };
+    if (this.isUsernameTaken(roomId, validation.value)) {
+      return { success: false, error: 'Ese alias ya está en uso en esta sala. Elige otro.' };
     }
 
+    const room = this.getRoomState(roomId);
     const user = new ConnectedUser({
       id: randomUUID(),
       socketId,
       username: validation.value,
+      roomId,
     });
 
-    this.users.set(user.id, user);
-    this.socketToUserId.set(socketId, user.id);
+    room.users.set(user.id, user);
+    this.socketToSession.set(socketId, { userId: user.id, roomId });
 
-    return { success: true, user };
+    return { success: true, user, room: roomConfig };
   }
 
   removeUserBySocketId(socketId) {
-    const userId = this.socketToUserId.get(socketId);
-    if (!userId) return null;
+    const session = this.socketToSession.get(socketId);
+    if (!session) return null;
 
-    const user = this.users.get(userId);
-    this.users.delete(userId);
-    this.socketToUserId.delete(socketId);
+    const room = this.getRoomState(session.roomId);
+    const user = room?.users.get(session.userId) ?? null;
 
-    return user ?? null;
+    if (user) {
+      room.users.delete(user.id);
+    }
+
+    this.socketToSession.delete(socketId);
+    return user;
   }
 
   getUserBySocketId(socketId) {
-    const userId = this.socketToUserId.get(socketId);
-    if (!userId) return null;
-    return this.users.get(userId) ?? null;
+    const session = this.socketToSession.get(socketId);
+    if (!session) return null;
+
+    const room = this.getRoomState(session.roomId);
+    return room?.users.get(session.userId) ?? null;
   }
 
-  getUsersList() {
-    return Array.from(this.users.values())
+  getUsersList(roomId) {
+    const room = this.getRoomState(roomId);
+    if (!room) return [];
+
+    return Array.from(room.users.values())
       .map((user) => user.toJSON())
       .sort((a, b) => a.username.localeCompare(b.username, 'es'));
   }
 
-  addMessage({ userId, username, content, type = 'user' }) {
+  buildReplySnapshot(room, replyToMessageId) {
+    if (!replyToMessageId) return null;
+
+    const original = room.messages.find((item) => item.id === replyToMessageId);
+    if (!original || original.type !== 'user') return null;
+
+    const preview =
+      original.content.length > 140 ? `${original.content.slice(0, 140)}…` : original.content;
+
+    return {
+      id: original.id,
+      username: original.username,
+      content: preview,
+    };
+  }
+
+  addMessage({ roomId, userId, username, content, type = 'user', replyToMessageId = null }) {
     const validation = MemoryStore.validateMessage(content);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
 
+    const room = this.getRoomState(roomId);
+    if (!room) {
+      return { success: false, error: 'Sala no encontrada.' };
+    }
+
+    const mentions = this.extractMentions(validation.value, roomId);
+    const replyTo = this.buildReplySnapshot(room, replyToMessageId);
     const message = new ChatMessage({
       userId,
       username,
       content: validation.value,
       type,
+      mentions,
+      replyTo,
     });
 
-    this.messages.push(message);
+    room.messages.push(message);
     return { success: true, message };
   }
 
-  addSystemMessage(content) {
+  addSystemMessage(roomId, content) {
+    const room = this.getRoomState(roomId);
+    if (!room) return null;
+
     const message = new ChatMessage({
       username: 'Sistema',
       content: MemoryStore.sanitizeText(content),
       type: 'system',
     });
 
-    this.messages.push(message);
+    room.messages.push(message);
     return message;
   }
 
-  editMessage(messageId, userId, newContent) {
+  editMessage(roomId, messageId, userId, newContent) {
     const validation = MemoryStore.validateMessage(newContent);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
 
-    const message = this.messages.find((item) => item.id === messageId);
+    const room = this.getRoomState(roomId);
+    if (!room) {
+      return { success: false, error: 'Sala no encontrada.' };
+    }
+
+    const message = room.messages.find((item) => item.id === messageId);
     if (!message) {
       return { success: false, error: 'Mensaje no encontrado.' };
     }
@@ -143,12 +242,15 @@ export class MemoryStore {
     message.content = validation.value;
     message.updatedAt = new Date().toISOString();
     message.isEdited = true;
+    message.mentions = this.extractMentions(validation.value, roomId);
 
     return { success: true, message };
   }
 
-  getHistory() {
-    return this.messages.map((message) => message.toJSON());
+  getHistory(roomId) {
+    const room = this.getRoomState(roomId);
+    if (!room) return [];
+    return room.messages.map((message) => message.toJSON());
   }
 }
 

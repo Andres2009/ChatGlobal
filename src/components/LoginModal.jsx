@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { DEFAULT_ROOMS, getThemeClass } from '../config/rooms';
 
 const MAX_ALIAS_LENGTH = 30;
 
-export default function LoginModal({ onJoin, isConnected }) {
+export default function LoginModal({ onJoin, isConnected, rooms }) {
   const [alias, setAlias] = useState('');
+  const availableRooms = rooms.length ? rooms : DEFAULT_ROOMS;
+  const [selectedRoomId, setSelectedRoomId] = useState(availableRooms[0]?.id ?? 'general');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -20,13 +23,17 @@ export default function LoginModal({ onJoin, isConnected }) {
       setError(`El alias no puede superar ${MAX_ALIAS_LENGTH} caracteres.`);
       return;
     }
+    if (!selectedRoomId) {
+      setError('Debes seleccionar una sala.');
+      return;
+    }
     if (!isConnected) {
       setError('Sin conexión al servidor. Intenta de nuevo en unos segundos.');
       return;
     }
 
     setIsSubmitting(true);
-    const result = await onJoin(trimmed);
+    const result = await onJoin(trimmed, selectedRoomId);
     setIsSubmitting(false);
 
     if (!result?.success) {
@@ -43,10 +50,33 @@ export default function LoginModal({ onJoin, isConnected }) {
               <i className="bi bi-chat-dots-fill" />
             </div>
             <h1 className="h3 mb-2">Bienvenido al Chat</h1>
-            <p className="text-muted mb-0">Ingresa tu nombre para comenzar a conversar en tiempo real.</p>
+            <p className="text-muted mb-0">Elige una sala, ingresa tu nombre y comienza a chatear.</p>
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
+            <div className="mb-4">
+              <label className="form-label fw-semibold">Selecciona una sala</label>
+              <div className="room-selector">
+                {availableRooms.map((room) => (
+                  <button
+                    key={room.id}
+                    type="button"
+                    className={`room-card ${getThemeClass(room.theme)} ${selectedRoomId === room.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedRoomId(room.id)}
+                  >
+                    <div className="room-card-icon">
+                      <i className={`bi ${room.icon}`} />
+                    </div>
+                    <div className="room-card-body">
+                      <strong>{room.name}</strong>
+                      <small>{room.topic}</small>
+                      <span className="room-card-users">{room.userCount ?? 0} en línea</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mb-3">
               <label htmlFor="alias" className="form-label fw-semibold">
                 Ingrese su nombre

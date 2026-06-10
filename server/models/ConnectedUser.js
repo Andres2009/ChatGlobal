@@ -1,8 +1,9 @@
 export class ConnectedUser {
-  constructor({ id, socketId, username, joinedAt }) {
+  constructor({ id, socketId, username, roomId, joinedAt }) {
     this.id = id;
     this.socketId = socketId;
     this.username = username;
+    this.roomId = roomId;
     this.joinedAt = joinedAt ?? new Date().toISOString();
   }
 
@@ -11,6 +12,7 @@ export class ConnectedUser {
       id: this.id,
       socketId: this.socketId,
       username: this.username,
+      roomId: this.roomId,
       joinedAt: this.joinedAt,
     };
   }
