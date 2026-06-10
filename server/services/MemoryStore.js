@@ -175,7 +175,7 @@ export class MemoryStore {
     };
   }
 
-  addMessage({ roomId, userId, username, content, type = 'user', replyToMessageId = null, imageUrl = null }) {
+  addMessage({ roomId, userId, username, content, type = 'user', replyToMessageId = null, imageUrl = null, isSticker = false }) {
     const room = this.getRoomState(roomId);
     if (!room) return { success: false, error: 'Sala no encontrada.' };
 
@@ -211,6 +211,7 @@ export class MemoryStore {
       mentions,
       replyTo,
       imageUrl: safeImageUrl,
+      isSticker: !!isSticker,
     });
 
     room.messages.push(message);

@@ -105,6 +105,69 @@ export default function MessageItem({
 
   const seenCount = message.seenBy?.length ?? 0;
 
+  // ── Sticker message ──────────────────────────────────────────────────────────
+  if (message.isSticker) {
+    return (
+      <article
+        ref={articleRef}
+        className={`message-item sticker-message animate-slide-in ${isOwner ? 'is-own' : 'is-other'}`}
+      >
+        {!isOwner && (
+          <div className="message-avatar">{message.username.charAt(0).toUpperCase()}</div>
+        )}
+
+        <div className="sticker-message-wrap">
+          {!isOwner && <strong className="sticker-sender-name">{message.username}</strong>}
+
+          {/* Emoji sticker */}
+          {message.content && !message.imageUrl && (
+            <div className="sticker-display sticker-display-emoji" title={`Sticker de ${message.username}`}>
+              {message.content}
+            </div>
+          )}
+
+          {/* Image sticker (custom uploaded) */}
+          {message.imageUrl && (
+            <div
+              className="sticker-display sticker-display-image"
+              onClick={() => setLightboxOpen(true)}
+              title={`Sticker de ${message.username}`}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setLightboxOpen(true)}
+            >
+              <img
+                src={message.imageUrl}
+                alt={`Sticker de ${message.username}`}
+                className="sticker-image-content"
+                loading="lazy"
+              />
+            </div>
+          )}
+
+          <div className="sticker-meta">
+            <time className="message-time" dateTime={message.createdAt} title={formatDateTime(message.createdAt)}>
+              {formatTime(message.createdAt)}
+            </time>
+            {isOwner && (
+              <i
+                className={`bi message-check ${seenCount > 0 ? 'bi-check2-all is-seen' : 'bi-check2'}`}
+                title={seenCount > 0 ? `Visto por ${seenCount} persona${seenCount > 1 ? 's' : ''}` : 'Enviado'}
+              />
+            )}
+          </div>
+
+          {isOwner && <SeenBy seenBy={message.seenBy} />}
+        </div>
+
+        {lightboxOpen && message.imageUrl && (
+          <ImageLightbox src={message.imageUrl} onClose={() => setLightboxOpen(false)} />
+        )}
+      </article>
+    );
+  }
+
+  // ── Regular message ───────────────────────────────────────────────────────────
   return (
     <>
       <article

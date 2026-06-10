@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import GifPicker from './GifPicker';
 import MentionSuggestions from './MentionSuggestions';
 import QuoteBlock from './QuoteBlock';
+import StickerPicker from './StickerPicker';
 import {
   filterUsersForMention,
   getMentionQuery,
@@ -30,8 +31,9 @@ export default function MessageInput({
   const [activeSuggestion,setActiveSuggestion]= useState(0);
   const [imageFile,       setImageFile]       = useState(null);   // File (upload)
   const [imagePreview,    setImagePreview]    = useState(null);   // blob URL or external GIF URL
-  const [pendingGifUrl,   setPendingGifUrl]   = useState(null);   // external GIF URL (no upload)
-  const [showGifPicker,   setShowGifPicker]   = useState(false);
+  const [pendingGifUrl,     setPendingGifUrl]     = useState(null);  // external GIF URL (no upload)
+  const [showGifPicker,     setShowGifPicker]     = useState(false);
+  const [showStickerPicker, setShowStickerPicker] = useState(false);
 
   const textareaRef   = useRef(null);
   const fileInputRef  = useRef(null);
@@ -152,6 +154,15 @@ export default function MessageInput({
     setImagePreview(gifUrl);
     setError('');
     focusInput();
+  };
+
+  const handleStickerSend = async ({ emoji, imageUrl: stickerImageUrl }) => {
+    setShowStickerPicker(false);
+    notifyTypingStop();
+    // Stickers are sent immediately on click, no user confirmation needed
+    const result = await onSend(emoji ?? '', quotedMessage?.id ?? null, stickerImageUrl, true);
+    if (!result?.success) setError(result?.error ?? 'No se pudo enviar el sticker.');
+    else { onClearQuote?.(); focusInput(); }
   };
 
   const handleSend = async () => {
@@ -286,6 +297,13 @@ export default function MessageInput({
           />
         )}
 
+        {showStickerPicker && (
+          <StickerPicker
+            onSelect={handleStickerSend}
+            onClose={() => { setShowStickerPicker(false); focusInput(); }}
+          />
+        )}
+
         {mentionState && (
           <MentionSuggestions
             suggestions={suggestions}
@@ -329,7 +347,7 @@ export default function MessageInput({
         <button
           type="button"
           className={`btn image-attach-btn ${imageFile ? 'has-image' : ''}`}
-          onClick={() => { setShowGifPicker(false); fileInputRef.current?.click(); }}
+          onClick={() => { setShowGifPicker(false); setShowStickerPicker(false); fileInputRef.current?.click(); }}
           disabled={disabled || busy}
           title="Adjuntar imagen"
           aria-label="Adjuntar imagen"
@@ -340,12 +358,23 @@ export default function MessageInput({
         <button
           type="button"
           className={`btn gif-attach-btn ${showGifPicker ? 'active' : ''}`}
-          onClick={() => setShowGifPicker((v) => !v)}
+          onClick={() => { setShowStickerPicker(false); setShowGifPicker((v) => !v); }}
           disabled={disabled || busy}
           title="Buscar GIF"
           aria-label="Buscar GIF"
         >
           GIF
+        </button>
+
+        <button
+          type="button"
+          className={`btn sticker-attach-btn ${showStickerPicker ? 'active' : ''}`}
+          onClick={() => { setShowGifPicker(false); setShowStickerPicker((v) => !v); }}
+          disabled={disabled || busy}
+          title="Stickers"
+          aria-label="Stickers"
+        >
+          <i className="bi bi-emoji-smile-fill" />
         </button>
 
         <button

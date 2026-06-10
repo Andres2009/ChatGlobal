@@ -95,6 +95,7 @@ export function registerSocketHandlers(io) {
         content:          payload?.content ?? '',
         replyToMessageId: payload?.replyToMessageId ?? null,
         imageUrl:         payload?.imageUrl ?? null,
+        isSticker:        payload?.isSticker ?? false,
       });
 
       if (!result.success) {

@@ -14,6 +14,7 @@ export class ChatMessage {
     replyTo = null,
     seenBy = [],
     imageUrl = null,
+    isSticker = false,
   }) {
     this.id = id ?? randomUUID();
     this.userId = userId ?? null;
@@ -25,8 +26,9 @@ export class ChatMessage {
     this.type = type;
     this.mentions = mentions;
     this.replyTo = replyTo;
-    this.seenBy   = seenBy;   // [{ userId, username }]
-    this.imageUrl = imageUrl; // string | null
+    this.seenBy    = seenBy;    // [{ userId, username }]
+    this.imageUrl  = imageUrl;  // string | null
+    this.isSticker = isSticker; // boolean
   }
 
   toJSON() {
@@ -41,8 +43,9 @@ export class ChatMessage {
       type: this.type,
       mentions: this.mentions,
       replyTo:  this.replyTo,
-      seenBy:   this.seenBy,
-      imageUrl: this.imageUrl,
+      seenBy:    this.seenBy,
+      imageUrl:  this.imageUrl,
+      isSticker: this.isSticker,
     };
   }
 }

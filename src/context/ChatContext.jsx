@@ -84,7 +84,7 @@ export function ChatProvider({ children }) {
   );
 
   const sendMessage = useCallback(
-    (content, replyToMessageId = null, imageUrl = null) =>
+    (content, replyToMessageId = null, imageUrl = null, isSticker = false) =>
       new Promise((resolve) => {
         const sanitized = sanitizeClientText(content);
         if (!sanitized && !imageUrl) {
@@ -101,7 +101,7 @@ export function ChatProvider({ children }) {
 
         socket.emit(
           'send-message',
-          { content: sanitized, replyToMessageId, imageUrl },
+          { content: sanitized, replyToMessageId, imageUrl, isSticker },
           (response) => {
             resolve(response ?? { success: false, error: 'No se pudo enviar el mensaje.' });
           }
