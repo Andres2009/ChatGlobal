@@ -13,7 +13,7 @@ function sanitizeClientText(text) {
 }
 
 export function ChatProvider({ children }) {
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected, connectionStatus } = useSocket();
   const [messages,     setMessages]     = useState([]);
   const [users,        setUsers]        = useState([]);
   const [rooms,        setRooms]        = useState([]);
@@ -21,11 +21,15 @@ export function ChatProvider({ children }) {
   const [currentRoom,  setCurrentRoom]  = useState(null);
   const [isJoined,     setIsJoined]     = useState(false);
   const [toasts,       setToasts]       = useState([]);
-  const [typingUsers,  setTypingUsers]  = useState([]); // [{ userId, username }]
-  const toastIdRef = useRef(0);
-  const currentUserRef = useRef(null);
-  const pendingSeenIds = useRef(new Set());
-  const seenTimerRef = useRef(null);
+  const [typingUsers,  setTypingUsers]  = useState([]);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+
+  const toastIdRef      = useRef(0);
+  const currentUserRef  = useRef(null);
+  const pendingSeenIds  = useRef(new Set());
+  const seenTimerRef    = useRef(null);
+  const lastJoinDataRef = useRef(null);   // { username, roomId } — used for auto-rejoin
+  const isJoinedRef     = useRef(false);  // mirror of isJoined for use inside event handlers
 
   const {
     pendingCount,
@@ -38,9 +42,8 @@ export function ChatProvider({ children }) {
     setShowBanner,
   } = useNotifications(currentRoom);
 
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { isJoinedRef.current = isJoined; },      [isJoined]);
 
   const showToast = useCallback((message, type = 'info') => {
     const id = ++toastIdRef.current;
@@ -50,6 +53,19 @@ export function ChatProvider({ children }) {
     }, 3500);
   }, []);
 
+  // ── Request history (manual refresh button) ──────────────────────────────
+  const requestHistory = useCallback(() => {
+    if (!isJoinedRef.current) return;
+    socket.emit('request-history', (response) => {
+      if (response?.success) {
+        setMessages(response.messages ?? []);
+        setUsers(response.users ?? []);
+        setLastSyncTime(new Date());
+      }
+    });
+  }, [socket]);
+
+  // ── Join ─────────────────────────────────────────────────────────────────
   const joinChat = useCallback(
     (username, roomId) =>
       new Promise((resolve) => {
@@ -59,10 +75,7 @@ export function ChatProvider({ children }) {
           return;
         }
         if (sanitized.length > MAX_ALIAS_LENGTH) {
-          resolve({
-            success: false,
-            error: `El alias no puede superar ${MAX_ALIAS_LENGTH} caracteres.`,
-          });
+          resolve({ success: false, error: `El alias no puede superar ${MAX_ALIAS_LENGTH} caracteres.` });
           return;
         }
         if (!roomId) {
@@ -72,9 +85,11 @@ export function ChatProvider({ children }) {
 
         socket.emit('join-chat', { username: sanitized, roomId }, (response) => {
           if (response?.success) {
+            lastJoinDataRef.current = { username: sanitized, roomId };
             setCurrentUser(response.user);
             setCurrentRoom(response.room);
             setIsJoined(true);
+            setLastSyncTime(new Date());
             requestPermission();
           }
           resolve(response ?? { success: false, error: 'No se pudo unir al chat.' });
@@ -83,6 +98,7 @@ export function ChatProvider({ children }) {
     [socket, requestPermission]
   );
 
+  // ── Send ─────────────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     (content, replyToMessageId = null, imageUrl = null, isSticker = false) =>
       new Promise((resolve) => {
@@ -92,10 +108,7 @@ export function ChatProvider({ children }) {
           return;
         }
         if (sanitized && sanitized.length > MAX_MESSAGE_LENGTH) {
-          resolve({
-            success: false,
-            error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.`,
-          });
+          resolve({ success: false, error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.` });
           return;
         }
 
@@ -113,16 +126,21 @@ export function ChatProvider({ children }) {
   const startTyping = useCallback(() => socket.emit('typing-start'), [socket]);
   const stopTyping  = useCallback(() => socket.emit('typing-stop'),  [socket]);
 
+  // ── Switch room ───────────────────────────────────────────────────────────
   const switchRoom = useCallback(
     (roomId) =>
       new Promise((resolve) => {
         socket.emit('switch-room', { roomId }, (response) => {
+          if (response?.success && lastJoinDataRef.current) {
+            lastJoinDataRef.current = { ...lastJoinDataRef.current, roomId };
+          }
           resolve(response ?? { success: false, error: 'No se pudo cambiar de sala.' });
         });
       }),
     [socket]
   );
 
+  // ── Mark seen ─────────────────────────────────────────────────────────────
   const markMessagesSeen = useCallback(
     (messageId) => {
       if (!isJoined) return;
@@ -137,6 +155,7 @@ export function ChatProvider({ children }) {
     [socket, isJoined]
   );
 
+  // ── Edit ─────────────────────────────────────────────────────────────────
   const editMessage = useCallback(
     (messageId, content) =>
       new Promise((resolve) => {
@@ -146,10 +165,7 @@ export function ChatProvider({ children }) {
           return;
         }
         if (sanitized.length > MAX_MESSAGE_LENGTH) {
-          resolve({
-            success: false,
-            error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.`,
-          });
+          resolve({ success: false, error: `El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.` });
           return;
         }
 
@@ -160,6 +176,7 @@ export function ChatProvider({ children }) {
     [socket]
   );
 
+  // ── Incoming message notification ─────────────────────────────────────────
   const handleIncomingMessage = useCallback(
     (message) => {
       const me = currentUserRef.current;
@@ -177,24 +194,28 @@ export function ChatProvider({ children }) {
     [currentRoom, pushNotification]
   );
 
+  // ── Socket event listeners ────────────────────────────────────────────────
   useEffect(() => {
     const onRoomsList = ({ rooms: availableRooms }) => {
       setRooms(availableRooms ?? []);
     };
 
     const onHistoryLoaded = ({ messages: history, users: connectedUsers, currentUser: user, room }) => {
-      setMessages(history);
-      setUsers(connectedUsers);
+      setMessages(history ?? []);
+      setUsers(connectedUsers ?? []);
       setCurrentUser(user);
       setCurrentRoom(room);
       setIsJoined(true);
       setTypingUsers([]);
+      setLastSyncTime(new Date());
       clearNotifications();
     };
 
     const onReceiveMessage = ({ message }) => {
-      setMessages((prev) => [...prev, message]);
-      // Clear typing indicator for the sender when their message arrives
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
       setTypingUsers((prev) => prev.filter((u) => u.userId !== message.userId));
       handleIncomingMessage(message);
     };
@@ -209,13 +230,19 @@ export function ChatProvider({ children }) {
 
     const onUserJoined = ({ user, systemMessage, roomId }) => {
       if (currentRoom && roomId !== currentRoom.id) return;
-      setMessages((prev) => [...prev, systemMessage]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === systemMessage.id)) return prev;
+        return [...prev, systemMessage];
+      });
       showToast(`${user.username} se unió a la sala`, 'join');
     };
 
     const onUserLeft = ({ user, systemMessage, roomId }) => {
       if (currentRoom && roomId !== currentRoom.id) return;
-      setMessages((prev) => [...prev, systemMessage]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === systemMessage.id)) return prev;
+        return [...prev, systemMessage];
+      });
       setTypingUsers((prev) => prev.filter((u) => u.userId !== user.id));
       showToast(`${user.username} abandonó la sala`, 'leave');
     };
@@ -223,9 +250,7 @@ export function ChatProvider({ children }) {
     const onUserTyping = ({ userId, username, isTyping }) => {
       setTypingUsers((prev) => {
         if (isTyping) {
-          return prev.some((u) => u.userId === userId)
-            ? prev
-            : [...prev, { userId, username }];
+          return prev.some((u) => u.userId === userId) ? prev : [...prev, { userId, username }];
         }
         return prev.filter((u) => u.userId !== userId);
       });
@@ -249,34 +274,62 @@ export function ChatProvider({ children }) {
       showToast(`${mentionedBy} te mencionó en un mensaje`, 'mention');
     };
 
-    socket.on('rooms-list', onRoomsList);
-    socket.on('history-loaded', onHistoryLoaded);
-    socket.on('receive-message', onReceiveMessage);
-    socket.on('message-edited', onMessageEdited);
-    socket.on('users-updated', onUsersUpdated);
-    socket.on('user-joined', onUserJoined);
-    socket.on('user-left', onUserLeft);
+    socket.on('rooms-list',           onRoomsList);
+    socket.on('history-loaded',       onHistoryLoaded);
+    socket.on('receive-message',      onReceiveMessage);
+    socket.on('message-edited',       onMessageEdited);
+    socket.on('users-updated',        onUsersUpdated);
+    socket.on('user-joined',          onUserJoined);
+    socket.on('user-left',            onUserLeft);
     socket.on('mention-notification', onMentionNotification);
-    socket.on('messages-seen', onMessagesSeen);
-    socket.on('user-typing', onUserTyping);
+    socket.on('messages-seen',        onMessagesSeen);
+    socket.on('user-typing',          onUserTyping);
 
     socket.emit('get-rooms');
 
     return () => {
-      socket.off('rooms-list', onRoomsList);
-      socket.off('history-loaded', onHistoryLoaded);
-      socket.off('receive-message', onReceiveMessage);
-      socket.off('message-edited', onMessageEdited);
-      socket.off('users-updated', onUsersUpdated);
-      socket.off('user-joined', onUserJoined);
-      socket.off('user-left', onUserLeft);
+      socket.off('rooms-list',           onRoomsList);
+      socket.off('history-loaded',       onHistoryLoaded);
+      socket.off('receive-message',      onReceiveMessage);
+      socket.off('message-edited',       onMessageEdited);
+      socket.off('users-updated',        onUsersUpdated);
+      socket.off('user-joined',          onUserJoined);
+      socket.off('user-left',            onUserLeft);
       socket.off('mention-notification', onMentionNotification);
-      socket.off('messages-seen', onMessagesSeen);
-      socket.off('user-typing', onUserTyping);
+      socket.off('messages-seen',        onMessagesSeen);
+      socket.off('user-typing',          onUserTyping);
     };
   }, [socket, showToast, currentRoom, handleIncomingMessage, pushNotification, clearNotifications]);
 
-  // Track window focus/visibility and broadcast to the room
+  // ── Auto-rejoin on reconnect ──────────────────────────────────────────────
+  useEffect(() => {
+    const onConnect = () => {
+      if (!isJoinedRef.current || !lastJoinDataRef.current) return;
+
+      socket.emit('join-chat', lastJoinDataRef.current, (response) => {
+        if (response?.success) {
+          showToast('Reconectado correctamente', 'success');
+          setLastSyncTime(new Date());
+        }
+      });
+    };
+
+    const onDisconnect = () => {
+      if (isJoinedRef.current) {
+        showToast('Conexión perdida. Reconectando...', 'error');
+      }
+    };
+
+    socket.on('connect',    onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    return () => {
+      socket.off('connect',    onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, [socket, showToast]);
+
+  // ── Window focus / visibility ─────────────────────────────────────────────
   useEffect(() => {
     if (!isJoined) return;
 
@@ -306,12 +359,14 @@ export function ChatProvider({ children }) {
       currentRoom,
       isJoined,
       isConnected,
+      connectionStatus,
       toasts,
       pendingCount,
       showBanner,
       lastNotification,
       notificationPermission: permission,
       typingUsers,
+      lastSyncTime,
       joinChat,
       switchRoom,
       sendMessage,
@@ -323,6 +378,7 @@ export function ChatProvider({ children }) {
       clearNotifications,
       setShowBanner,
       requestPermission,
+      requestHistory,
     }),
     [
       messages,
@@ -332,12 +388,14 @@ export function ChatProvider({ children }) {
       currentRoom,
       isJoined,
       isConnected,
+      connectionStatus,
       toasts,
       pendingCount,
       showBanner,
       lastNotification,
       permission,
       typingUsers,
+      lastSyncTime,
       joinChat,
       switchRoom,
       sendMessage,
@@ -349,6 +407,7 @@ export function ChatProvider({ children }) {
       clearNotifications,
       setShowBanner,
       requestPermission,
+      requestHistory,
     ]
   );
 

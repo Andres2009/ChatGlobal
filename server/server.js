@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import multer from 'multer';
 import { registerSocketHandlers } from './socket/socketHandler.js';
+import { memoryStore } from './services/MemoryStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -15,7 +16,6 @@ const distPath    = path.join(__dirname, '../dist');
 const uploadsPath = path.join(__dirname, 'uploads');
 const hasDist     = fs.existsSync(path.join(distPath, 'index.html'));
 
-// Ensure uploads directory exists
 if (!fs.existsSync(uploadsPath)) fs.mkdirSync(uploadsPath, { recursive: true });
 
 const PORT          = process.env.PORT || 3001;
@@ -41,7 +41,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     ALLOWED_MIME.has(file.mimetype)
       ? cb(null, true)
@@ -57,7 +57,6 @@ app.post('/upload', (req, res) => {
   });
 });
 
-// Serve uploaded files
 app.use('/uploads', express.static(uploadsPath));
 
 // ── Health ────────────────────────────────────────────────────────────────────
@@ -98,9 +97,18 @@ if (hasDist) {
   });
 }
 
-registerSocketHandlers(io);
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+async function start() {
+  await memoryStore.init();
+  registerSocketHandlers(io);
 
-httpServer.listen(PORT, () => {
-  const mode = hasDist ? 'producción' : 'desarrollo';
-  console.log(`Servidor Socket.IO (${mode}) en http://localhost:${PORT}`);
+  httpServer.listen(PORT, () => {
+    const mode = hasDist ? 'producción' : 'desarrollo';
+    console.log(`Servidor Socket.IO (${mode}) en http://localhost:${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Error al iniciar el servidor:', err);
+  process.exit(1);
 });

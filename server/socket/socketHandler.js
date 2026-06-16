@@ -220,6 +220,23 @@ export function registerSocketHandlers(io) {
       }
     });
 
+    socket.on('request-history', (callback) => {
+      const user = memoryStore.getUserBySocketId(socket.id);
+      if (!user) {
+        if (typeof callback === 'function') {
+          callback({ success: false, error: 'No estás en una sala.' });
+        }
+        return;
+      }
+
+      const history = memoryStore.getHistory(user.roomId);
+      const users   = memoryStore.getUsersList(user.roomId);
+
+      if (typeof callback === 'function') {
+        callback({ success: true, messages: history, users, roomId: user.roomId });
+      }
+    });
+
     socket.on('user-activity', (payload) => {
       const isActive = payload?.isActive ?? true;
       const result = memoryStore.setUserActivity(socket.id, isActive);

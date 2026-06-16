@@ -48,4 +48,8 @@ export class ChatMessage {
       isSticker: this.isSticker,
     };
   }
+
+  static fromJSON(data) {
+    return new ChatMessage(data);
+  }
 }

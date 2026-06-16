@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { ROOMS, getRoomById } from '../config/rooms.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { ConnectedUser } from '../models/ConnectedUser.js';
+import { historyService } from './HistoryService.js';
 
 const MAX_ALIAS_LENGTH = 30;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -22,6 +23,18 @@ export class MemoryStore {
 
     for (const room of ROOMS) {
       this.rooms.set(room.id, new RoomState(room));
+    }
+  }
+
+  async init() {
+    await historyService.load();
+
+    for (const room of ROOMS) {
+      const stored = historyService.getHistory(room.id);
+      if (stored.length > 0) {
+        const roomState = this.rooms.get(room.id);
+        roomState.messages = stored.map((data) => ChatMessage.fromJSON(data));
+      }
     }
   }
 
@@ -179,7 +192,6 @@ export class MemoryStore {
     const room = this.getRoomState(roomId);
     if (!room) return { success: false, error: 'Sala no encontrada.' };
 
-    // Content is optional when an image is attached
     let finalContent = '';
     if (content) {
       const validation = MemoryStore.validateMessage(content);
@@ -189,7 +201,6 @@ export class MemoryStore {
       return { success: false, error: 'El mensaje no puede estar vacío.' };
     }
 
-    // Allow known GIF CDN domains; sanitize everything else to /uploads/
     const ALLOWED_HOSTS = new Set(['c.tenor.com', 'media.tenor.com', 'media1.tenor.com', 'i.giphy.com', 'media.giphy.com']);
     let safeImageUrl = null;
     if (imageUrl) {
@@ -215,6 +226,8 @@ export class MemoryStore {
     });
 
     room.messages.push(message);
+    historyService.addMessage(roomId, message.toJSON());
+
     return { success: true, message };
   }
 
@@ -229,6 +242,8 @@ export class MemoryStore {
     });
 
     room.messages.push(message);
+    historyService.addMessage(roomId, message.toJSON());
+
     return message;
   }
 
@@ -260,6 +275,8 @@ export class MemoryStore {
     message.updatedAt = new Date().toISOString();
     message.isEdited = true;
     message.mentions = this.extractMentions(validation.value, roomId);
+
+    historyService.updateMessage(roomId, messageId, message.toJSON());
 
     return { success: true, message };
   }

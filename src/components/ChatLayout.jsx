@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { getThemeClass } from '../config/rooms';
 import { useChatContext } from '../context/ChatContext';
+import { formatTime } from '../utils/formatDate';
 import MessageInput from './MessageInput';
 import MessageList from './MessageList';
 import NotificationBanner from './NotificationBanner';
 import OnlineUsers from './OnlineUsers';
 import TypingIndicator from './TypingIndicator';
+
+const CONNECTION_LABELS = {
+  connected:    { dot: 'online',        text: 'Conectado' },
+  reconnecting: { dot: 'reconnecting',  text: 'Reconectando...' },
+  disconnected: { dot: 'offline',       text: 'Sin conexión' },
+};
 
 export default function ChatLayout() {
   const {
@@ -14,10 +21,11 @@ export default function ChatLayout() {
     rooms,
     currentUser,
     currentRoom,
-    isConnected,
+    connectionStatus,
     pendingCount,
     showBanner,
     lastNotification,
+    lastSyncTime,
     sendMessage,
     editMessage,
     markMessagesSeen,
@@ -26,15 +34,19 @@ export default function ChatLayout() {
     stopTyping,
     switchRoom,
     clearNotifications,
+    requestHistory,
   } = useChatContext();
 
   const [quotedMessage,   setQuotedMessage]   = useState(null);
   const [showUsers,       setShowUsers]        = useState(false);
   const [showRoomPicker,  setShowRoomPicker]   = useState(false);
   const [switching,       setSwitching]        = useState(false);
+  const [refreshing,      setRefreshing]       = useState(false);
   const roomPickerRef = useRef(null);
 
   const themeClass = getThemeClass(currentRoom?.theme);
+  const { dot, text } = CONNECTION_LABELS[connectionStatus] ?? CONNECTION_LABELS.disconnected;
+  const isConnected = connectionStatus === 'connected';
 
   const handleQuote = (message) => setQuotedMessage(message);
 
@@ -44,6 +56,13 @@ export default function ChatLayout() {
     setSwitching(true);
     await switchRoom(roomId);
     setSwitching(false);
+  };
+
+  const handleRefresh = async () => {
+    if (refreshing || !isConnected) return;
+    setRefreshing(true);
+    requestHistory();
+    setTimeout(() => setRefreshing(false), 800);
   };
 
   // Close room picker when clicking outside
@@ -116,7 +135,7 @@ export default function ChatLayout() {
           )}
         </div>
 
-        {/* ── Right side: user chip + status + toggles ── */}
+        {/* ── Right side ── */}
         <div className="chat-header-status">
           {pendingCount > 0 && (
             <span className="badge bg-danger notification-badge">
@@ -125,8 +144,33 @@ export default function ChatLayout() {
             </span>
           )}
 
-          <span className={`status-dot ${isConnected ? 'online' : 'offline'}`} />
-          <span className="small status-text">{isConnected ? 'En línea' : 'Sin conexión'}</span>
+          {/* Connection indicator */}
+          <span className={`status-dot ${dot}`} />
+          <span className="small status-text">{text}</span>
+
+          {/* Last sync time */}
+          {lastSyncTime && (
+            <span
+              className="sync-time d-none d-lg-inline"
+              title={`Última sincronización: ${formatTime(lastSyncTime.toISOString())}`}
+            >
+              <i className="bi bi-clock me-1" />
+              {formatTime(lastSyncTime.toISOString())}
+            </span>
+          )}
+
+          {/* Refresh button */}
+          <button
+            type="button"
+            className={`btn btn-sm refresh-chat-btn${refreshing ? ' refreshing' : ''}`}
+            onClick={handleRefresh}
+            disabled={!isConnected || refreshing}
+            title="Actualizar historial del chat"
+            aria-label="Actualizar chat"
+          >
+            <i className="bi bi-arrow-clockwise" />
+            <span className="d-none d-md-inline ms-1">Actualizar</span>
+          </button>
 
           {/* User profile chip */}
           {currentUser && (

@@ -77,7 +77,7 @@ export default function MessageList({
             <MessageItem
               key={message.id}
               message={message}
-              isOwner={message.userId === currentUserId}
+              isOwner={message.userId === currentUserId || message.username === currentUsername}
               currentUsername={currentUsername}
               onEdit={onEditMessage}
               onQuote={onQuoteMessage}
