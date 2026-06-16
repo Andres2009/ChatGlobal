@@ -4,14 +4,16 @@ export default function UpdateBanner({ show }) {
   return (
     <div className="update-banner" role="alert">
       <div className="update-banner-content">
-        <i className="bi bi-arrow-clockwise" />
-        <span>Nueva versión disponible.</span>
+        <i className="bi bi-stars" />
+        <span>
+          <strong>¡Nueva actualización!</strong> El chat ahora guarda el historial y se reconecta automáticamente.
+        </span>
         <button
           type="button"
           className="btn btn-sm btn-light update-reload-btn"
           onClick={() => window.location.reload()}
         >
-          Actualizar ahora
+          Aplicar ahora
         </button>
       </div>
     </div>
